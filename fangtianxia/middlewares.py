@@ -33,6 +33,7 @@ class FangtianxiaAgentMiddleware(object):
     def process_request(self,request,spider):
         user_agent = random.choice(self.USER_AGENTS)
         request.headers['User-Agent'] = user_agent
+        request.headers['Referer'] = "https://xianyang.fang.com/?s=BDPZ-BL"
 
 
 

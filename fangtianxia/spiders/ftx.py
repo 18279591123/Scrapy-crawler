@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 import scrapy
 import re
-from fangtianxia.items import FangtianxiaItem
+from fangtianxia.items import *
 from scrapy_redis.spiders import RedisSpider
 class FtxSpider(RedisSpider):
     name = 'ftx'
     allowed_domains = ['fang.com']
     #start_urls = ['https://www.fang.com/SoufunFamily.htm']
-    redis_key = "https://www.fang.com/SoufunFamily.htm"
+    redis_key = "fang"
     def parse(self, response):
         trs = response.xpath("//div[@class='outCont']//tr")
         province = None
@@ -26,17 +26,21 @@ class FtxSpider(RedisSpider):
                 url_module = city_url.split("//")
                 scheme = url_module[0]
                 domain = url_module[1]
+                list = domain.split(".")
+                domain = list[0]
+                print(domain)
                 if 'bj.' in domain:
                     newhouse_url = "http://newhouse.fang.com/house/s/"
                     esf_url = "http://esf.fang.com"
                 else:
-                    newhouse_url = scheme + '//' + 'newhouse.' + domain + 'house/s/' #新房链接
+                    newhouse_url = scheme + '//' +domain+ '.newhouse.fang.com/house/s/' #新房链接 newhouse_url = prefix + 'newhouse.fang' + domain + 'house/s/'
+                    print(newhouse_url)
                     esf_url = scheme + '//' + 'esf.' + domain
                 yield scrapy.Request(url=newhouse_url,callback=self.parse_newhouse,
                                      meta={"info":{province,city}})
 
-                yield scrapy.Request(url=esf_url,callback=self.parse_esf,
-                                     meta={"info": {province, city}})
+                # yield scrapy.Request(url=esf_url,callback=self.parse_esf,
+                #                      meta={"info": {province, city}})
 
 
 
@@ -85,5 +89,32 @@ class FtxSpider(RedisSpider):
                     url = next_url[1]
                 yield scrapy.Request(url=response.urljoin(url),callback=self.parse_newhouse,meta={"info":(province,city)})
 
-    def parse_esf(self, requset):
-        pass
+    def parse_esf(self,response):
+            province, city = response.meta.get('info')
+            dls = response.xpath("//div[@class='shop_list shop_list_4']/dl")
+            for dl in dls:
+                item = ESFHouseItem(province=province, city=city)
+                name = dl.xpath(".//span[@class='tit_shop']/text()").get()
+                if name:
+                    infos = dl.xpath(".//p[@class='tel_shop']/text()").getall()
+                    infos = list(map(lambda  x: re.sub(r"\s", "", x),  infos))
+                    for  info  in  infos:
+                         if  "厅"  in  info:
+                                    item["rooms"] = info
+                         elif  '层'  in  info:
+                            item["floor"] = info
+                         elif '向'  in  info:
+                            item['toward'] = info
+                         elif  '㎡'  in  info:
+                            item['area'] = info
+                         elif  '年建'  in  info:
+                            item['year'] = re.sub("年建", "", info)
+                    item['address'] = dl.xpath(".//p[@class='add_shop']/span/text()").get()
+                      #  总价
+                    item['price'] = "".join(dl.xpath(".//span[@class='red']//text()").getall())
+                      #  单价
+                    item['unit'] = dl.xpath(".//dd[@class='price_right']/span[2]/text()").get()
+                    item['name'] = name
+                    detail = dl.xpath(".//h4[@class='clearfix']/a/@href").get()
+                    item['origin_url'] = response.urljoin(detail)
+            yield item
